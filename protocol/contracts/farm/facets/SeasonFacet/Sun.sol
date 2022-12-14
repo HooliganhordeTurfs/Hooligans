@@ -5,21 +5,21 @@
 pragma solidity ^0.7.6;
 pragma experimental ABIEncoderV2;
 
-import "../../../libraries/Decimal.sol";
-import "../../../libraries/LibSafeMath32.sol";
-import "../../../libraries/LibSafeMath128.sol";
+import "~/libraries/Decimal.sol";
+import "~/libraries/LibSafeMath32.sol";
+import "~/libraries/LibSafeMath128.sol";
+import "~/C.sol";
+import "~/libraries/LibFertilizer.sol";
 import "./Oracle.sol";
-import "../../../C.sol";
-import "../../../libraries/LibFertilizer.sol";
 
 /**
- * @author Publius, Brean
+ * @author Publius
  * @title Sun
  **/
 contract Sun is Oracle {
     using SafeMath for uint256;
-    using LibSafeMath128 for uint128;
     using LibSafeMath32 for uint32;
+    using LibSafeMath128 for uint128;
     using Decimal for Decimal.D256;
 
     event Reward(uint32 indexed season, uint256 toField, uint256 toSilo, uint256 toFertilizer);
@@ -106,10 +106,26 @@ contract Sun is Oracle {
     }
 
     function rewardToSilo(uint256 amount) internal {
+        // NOTE that the Beans have already been minted (see {rewardBeans}).
+        //
+        // `s.earnedBeans` is an accounting mechanism that tracks the total number
+        // of Earned Beans that are claimable by Stalkholders. When claimed via `plant()`,
+        // it is decremented. See {Silo.sol:_plant} for more details.
+        s.earnedBeans = s.earnedBeans.add(uint128(amount));
+
+        // Mint Stalk (as Earned Stalk). Farmers can claim their Earned Stalk via {SiloFacet.sol:plant}.
+        //
+        // Stalk is created here, rather than in {rewardBeans}, because only
+        // Beans that are allocated to the Silo will receive Stalk. 
         uint256 seasonStalk = amount.mul(C.getStalkPerBean());
         s.s.stalk = s.s.stalk.add(seasonStalk);
-        s.earnedBeans = s.earnedBeans.add(uint128(amount)); 
+
+        // `s.newEarnedStalk` is an accounting mechanism that tracks the  number
+        // of Earned stalk that is allocated during the season. 
+        // This is used in _balanceOfEarnedBeans() to linearly distrubute 
+        // beans over the course of the season.
         s.newEarnedStalk = uint128(seasonStalk);
+
         s.siloBalances[C.beanAddress()].deposited = s
             .siloBalances[C.beanAddress()]
             .deposited
